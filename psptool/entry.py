@@ -329,6 +329,9 @@ class PubkeyEntry(Entry):
     def _parse(self):
         """ SEV spec B.1 """
 
+        self.is_inline = False
+        self.parent_entry = None  # will be set in Blob._find_inline_pubkey_parents
+
         pubexp_size = struct.unpack('<I', self[0x38:0x3c])[0] // 8
         modulus_size = struct.unpack('<I', self[0x3c:0x40])[0] // 8
         signature_size = len(self) - 0x40 - pubexp_size - modulus_size
