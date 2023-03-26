@@ -154,8 +154,6 @@ def main():
                             out_bytes = entry.get_signed_bytes()
                         elif args.decrypt and type(entry) is HeaderEntry:
                             out_bytes = entry.get_decrypted()
-                        elif args.pem_key and type(entry) is PubkeyEntry:
-                            out_bytes = entry.get_pem_encoded()
                         else:
                             out_bytes = entry.get_bytes()
 
