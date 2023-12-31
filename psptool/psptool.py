@@ -17,7 +17,7 @@
 from prettytable import PrettyTable
 import sys, json
 
-from .entry import Entry, HeaderEntry
+from .entry import Entry, HeaderEntry, PubkeyEntry
 from .blob import Blob
 from .utils import PrintHelper
 from .cert_tree import CertificateTree
@@ -77,7 +77,7 @@ class PSPTool:
                     directory.type,
                     directory.zen_generation,
                     directory.magic.decode('utf-8', 'backslashreplace'),
-                    hex(directory.secondary_directory_address) if directory.secondary_directory_address else '--'
+                    ', '.join([hex(sda) for sda in directory.secondary_directory_addresses])
                 ])
 
                 print(t)
@@ -95,7 +95,7 @@ class PSPTool:
             entries = sorted(self.blob.unique_entries())
 
         basic_fields = ['', ' ', 'Entry', 'Address', 'Size', 'Type', 'Magic/ID', 'Version', 'Info']
-        verbose_fields = ['MD5', 'size_signed', 'size_full', 'size_packed', 'load_addr']
+        verbose_fields = ['type_flags', 'MD5', 'size_signed', 'size_full', 'size_packed', 'load_addr']
 
         t = PrettyTable(basic_fields + verbose_fields)
         t.align = 'r'
@@ -111,6 +111,8 @@ class PSPTool:
                 try:
                     if entry.signed_entity.is_verified():
                         info.append(f'verified({entry.get_readable_signed_by()})')
+                    else:
+                        info.append(f'veri-failed({entry.get_readable_signed_by()})')
                 except errors.NoCertifyingKey:
                     info.append(f'key_missing({entry.signed_entity.certifying_id.as_string()[:4]})')
                 except errors.SignatureInvalid:
@@ -127,6 +129,10 @@ class PSPTool:
             if type(entry) == HeaderEntry and entry.inline_keys:
                 inline_keys = ', '.join(map(lambda k: k.get_readable_magic(), entry.inline_keys))
                 info.append(f'inline_keys({inline_keys})')
+            if type(entry) == PubkeyEntry:
+                info.append(entry.get_readable_key_usage())
+                if entry.get_readable_security_features():
+                    info.append(entry.get_readable_security_features())
 
             all_values = [
                 '',
@@ -138,6 +144,7 @@ class PSPTool:
                 entry.get_readable_magic(),
                 entry.get_readable_version(),
                 ', '.join(info),
+                hex(entry.type_flags),
                 entry.md5()[:4].upper()
             ]
 
@@ -171,9 +178,8 @@ class PSPTool:
                     'address': directory.get_address(),
                     'directoryType': directory.type,
                     'magic': directory.magic.decode('utf-8', 'backslashreplace'),
+                    'secondaryAddresses': directory.secondary_directory_addresses
                 }
-                if directory.secondary_directory_address:
-                    d['secondaryAddress'] = directory.secondary_directory_address
 
                 entries = self.ls_dir_dict(rom, index, verbose=verbose)
                 d['entries'] = entries
@@ -231,3 +237,17 @@ class PSPTool:
             out.append(all_values)
 
         return out
+
+    def print_metrics(self):
+        print(self.filename)
+        print(f'{self.ph.error_count=}')
+        print(f'{self.ph.warning_count=}')
+        print(f'{self.ph.info_count=}')
+
+        rom_count = len(self.blob.roms)
+        directory_count = sum([len(rom.directories) for rom in self.blob.roms])
+        unique_entries_count = len(self.blob.unique_entries())
+
+        print(f'{rom_count=}')
+        print(f'{directory_count=}')
+        print(f'{unique_entries_count=}')

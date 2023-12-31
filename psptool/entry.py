@@ -61,11 +61,16 @@ class Entry(NestedBuffer):
         0x12: 'SMU_OFF_CHIP_FW_2',
         0x13: 'DEBUG_UNLOCK',
         0x1A: 'PSP_S3_NV_DATA',
+        0x20: 'HARDWARE_IP_CONFIG',
         0x21: 'WRAPPED_IKEK',
         0x22: 'TOKEN_UNLOCK',
         0x24: 'SEC_GASKET',
         0x25: 'MP2_FW',
+        0x26: 'MP2_FW_2',
+        0x27: 'USER_MODE_UNIT_TEST',
         0x28: 'DRIVER_ENTRIES',
+        0x29: 'KVM_IMAGE',
+        0x2A: 'MP5_FW',
         0x2D: 'S0I3_DRIVER',
         0x30: 'ABL0',
         0x31: 'ABL1',
@@ -75,35 +80,52 @@ class Entry(NestedBuffer):
         0x35: 'ABL5',
         0x36: 'ABL6',
         0x37: 'ABL7',
+        0x38: 'SEV_DATA',
+        0x39: 'SEV_CODE',
         0x3A: 'FW_PSP_WHITELIST',
+        0x3C: 'VBIOS_PRELOAD',
         # 0x40: 'FW_L2_PTR',
         0x41: 'FW_IMC',
         0x42: 'FW_GEC',
         # 0x43: 'FW_XHCI',
         0x44: 'FW_INVALID',
+        0x45: 'TOS_SECURITY_POLICY',
+        0x47: 'DRTM_TA',
+        0x51: 'TOS_PUBLIC_KEY',
+        0x54: 'PSP_NVRAM',
+        0x55: 'BL_ROLLBACK_SPL',
+        0x5a: 'MSMU_BINARY_0',
+        0x5c: 'WMOS',
+        0x71: 'DMCUB_INS',
         0x46: 'ANOTHER_FET',
         0x50: 'KEY_DATABASE',
         0x5f: 'FW_PSP_SMUSCS',
-        0x60: 'FW_IMC',
-        0x61: 'FW_GEC',
+        0x60: 'APCB',
+        0x61: 'APOB',
         0x62: 'FW_XHCI',
-        0x63: 'FW_INVALID',
+        0x63: 'APOB_NV_COPY',
+        0x64: 'PMU_CODE',
+        0x65: 'PMU_DATA',
+        0x66: 'MICROCODE_PATCH',
+        0x67: 'CORE_MCE_DATA',
+        0x68: 'APCB_COPY',
+        0x69: 'EARLY_VGA_IMAGE',
+        0x6A: 'MP2_FW_CFG',
+        0x73: 'PSP_FW_BOOT_LOADER',
+        0x80: 'OEM_System_Trusted_Application',
+        0x81: 'OEM_System_TA_Signing_key',
         0x108: 'PSP_SMU_FN_FIRMWARE',
         0x118: 'PSP_SMU_FN_FIRMWARE2',
 
         # Entry types named by us
         #   Custom names are denoted by a leading '!'
         0x14: '!PSP_MCLF_TRUSTLETS',  # very similiar to ~PspTrustlets.bin~ in coreboot blobs
-        0x38: '!PSP_ENCRYPTED_NV_DATA',
         0x40: '!PL2_SECONDARY_DIRECTORY',
         0x43: '!KEY_UNKNOWN_1',
         0x4e: '!KEY_UNKNOWN_2',
         0x70: '!BL2_SECONDARY_DIRECTORY',
         0x15f: '!FW_PSP_SMUSCS_2',  # seems to be a secondary FW_PSP_SMUSCS (see above)
         0x112: '!SMU_OFF_CHIP_FW_3',  # seems to tbe a tertiary SMU image (see above)
-        0x39: '!SEV_APP',
-        0x10062: '!UEFI-IMAGE',
-        0x30062: '!UEFI-IMAGE',
         0xdead: '!KEY_NOT_IN_DIR'
 
     }
@@ -122,19 +144,15 @@ class Entry(NestedBuffer):
         pass
 
     @classmethod
-    def from_fields(cls, parent_directory, parent_buffer, type_, size, offset, blob, psptool, destination: int = None):
+    def from_fields(cls, parent_directory, parent_buffer, type_, type_flags, size, offset, blob, psptool, destination: int = None):
         # Try to parse these ID's as a key entry
         # todo: consolidate these constants with Directory._ENTRY_TYPES_PUBKEY
         PUBKEY_ENTRY_TYPES = [0x0, 0x9, 0xa, 0x5, 0xd, 0x43, 0x4e, 0xdead]
 
         # Types known to have no PSP HDR
         # TODO: Find a better way to identify those entries
-        NO_HDR_ENTRY_TYPES = [0x4, 0xb, 0x21, 0x40, 0x70, 0x30062, 0x6, 0x61, 0x60,
-                              0x68, 0x100060, 0x100068, 0x5f, 0x15f, 0x1a, 0x22, 0x63,
-                              0x67, 0x66, 0x100066, 0x200066, 0x300066, 0x10062,
-                              0x400066, 0x500066, 0x800068, 0x61, 0x200060, 0x300060,
-                              0x300068, 0x400068, 0x500068, 0x400060, 0x500060, 0x200068,
-                              0x7, 0x38, 0x46, 0x54, 0x600060, 0x700060, 0x600068, 0x700068]
+        NO_HDR_ENTRY_TYPES = [0x4, 0xb, 0x21, 0x40, 0x70, 0x6, 0x61, 0x60, 0x68, 0x5f, 0x15f, 0x1a, 0x22, 0x63, 0x67,
+                              0x66, 0x62, 0x61, 0x7, 0x38, 0x46, 0x54]
 
         NO_SIZE_ENTRY_TYPES = [0xb]
 
@@ -152,6 +170,7 @@ class Entry(NestedBuffer):
                     parent_directory,
                     parent_buffer,
                     type_,
+                    type_flags,
                     size,
                     offset,
                     blob,
@@ -164,12 +183,13 @@ class Entry(NestedBuffer):
         elif type_ in PUBKEY_ENTRY_TYPES:
             # Option 2: it's a PubkeyEntry
             try:
-                new_entry = PubkeyEntry(parent_directory, parent_buffer, type_, size, offset, blob, psptool)
+                new_entry = PubkeyEntry(parent_directory, parent_buffer, type_, type_flags, size, offset, blob, psptool)
             except Exception as e:
                 new_entry = Entry(
                     parent_directory,
                     parent_buffer,
                     type_,
+                    type_flags,
                     size,
                     offset,
                     blob,
@@ -181,12 +201,13 @@ class Entry(NestedBuffer):
         elif type_ in Entry.KEY_STORE_TYPES:
             # Option 2: it's a KeyStoreEntry
             try:
-                new_entry = KeyStoreEntry(parent_directory, parent_buffer, type_, size, offset, blob, psptool)
+                new_entry = KeyStoreEntry(parent_directory, parent_buffer, type_, type_flags, size, offset, blob, psptool)
             except:
                 new_entry = Entry(
                     parent_directory,
                     parent_buffer,
                     type_,
+                    type_flags,
                     size,
                     offset,
                     blob,
@@ -200,7 +221,7 @@ class Entry(NestedBuffer):
                 # If the size in the directory is zero, set the size to hdr len
                 size = HeaderEntry.HEADER_LEN
             try:
-                new_entry = HeaderEntry(parent_directory, parent_buffer, type_, size, offset, blob, psptool)
+                new_entry = HeaderEntry(parent_directory, parent_buffer, type_, type_flags, size, offset, blob, psptool)
                 if size == 0:
                     psptool.ph.print_warning(f"Entry with zero size. Type: {type_}. Dir: 0x{offset:x}")
             except:
@@ -208,6 +229,7 @@ class Entry(NestedBuffer):
                     parent_directory,
                     parent_buffer,
                     type_,
+                    type_flags,
                     size,
                     offset,
                     blob,
@@ -269,7 +291,7 @@ class Entry(NestedBuffer):
                 # Set zlib_size
                 blob[0x54:0x58] = zlib_size.to_bytes(4, 'little')
 
-            entry = HeaderEntry(None, blob, id_, total_size, 0x0, blob, psptool)
+            entry = HeaderEntry(None, blob, id_, None, total_size, 0x0, blob, psptool)
 
             if signed:
                 entry.signature[:] = private_key.sign(entry.get_signed_bytes())
@@ -278,7 +300,7 @@ class Entry(NestedBuffer):
         else:
             raise Entry.TypeError()
 
-    def __init__(self, parent_directory, parent_buffer, type_, buffer_size, buffer_offset: int, blob, psptool,
+    def __init__(self, parent_directory, parent_buffer, type_, type_flags, buffer_size, buffer_offset: int, blob, psptool,
                  destination: int = None):
         super().__init__(parent_buffer, buffer_size, buffer_offset=buffer_offset)
 
@@ -286,6 +308,7 @@ class Entry(NestedBuffer):
         self.blob = blob
         self.psptool = psptool
         self.type = type_
+        self.type_flags = type_flags
         self.destination = destination
         # todo: deduplicate Entry objects pointing to the same address (in `from_fields`?)
         self.references = [parent_directory] if parent_directory is not None else []
@@ -459,12 +482,13 @@ class KeyStoreEntryHeader(NestedBuffer):
         if self.has_sha256_checksum:
             self.sha256_checksum = NestedBuffer(self, 0x20, buffer_offset=0xd0)
 
+        # Based on KeyStore entries seen in: Lenovo X13 and Lenovo Ideapad 5 Pro 16ACH6
         zero_ranges = {
-            (0x00, 0x10),
             (0x18, 0x18),
             (0x48, 0x04),
             (0x50, 0x08),
-            (0x5c, 0x10),
+            (0x5c, 0x04),
+            (0x64, 0x08),
             (0x70, 0x0c),
             (0x80, 0x50),
             (0xf0, 0x10),
@@ -514,7 +538,7 @@ class KeyStoreEntryHeader(NestedBuffer):
     @property
     def has_sha256_checksum(self) -> bool:
         # assert self.sha256_checksum_flag_1 == self.sha256_checksum_flag_2
-        assert self.sha256_checksum_flag_1 in {0, 1}
+        assert self.sha256_checksum_flag_1 in {0, 1, 2}, f"unknown {self.sha256_checksum_flag_1=}"
         return self.sha256_checksum_flag_1 == 1
 
 
@@ -649,13 +673,16 @@ class PubkeyEntry(Entry):
 
         # misc info
         self._version = NestedBuffer(self, 4)
-        if self.version != 1:
+        if self.version not in {1, 2}:
             raise UnknownPubkeyEntryVersion
         self._key_usage = NestedBuffer(self, 4, 0x24)
 
         # key ids
         self.key_id = KeyId(self, 0x10, 0x4)
         self.certifying_id = KeyId(self, 0x10, 0x14)
+
+        # security features
+        self._security_features = NestedBuffer(self, 2, 0x2A)
 
         # crypto material
         self._pubexp_bits = NestedBuffer(self, 4, 0x38)
@@ -716,6 +743,10 @@ class PubkeyEntry(Entry):
     def modulus(self) -> int:
         return int.from_bytes(self._modulus.get_bytes(), 'little')
 
+    @property
+    def security_features(self) -> int:
+        return int.from_bytes(self._security_features.get_bytes(), 'little')
+
     def get_signed_bytes(self):
         return self.get_bytes(0, self.buffer_size - self.signature_size)
 
@@ -729,6 +760,26 @@ class PubkeyEntry(Entry):
     def get_readable_version(self):
         return str(self.version)
 
+    def get_readable_key_usage(self):
+        if self.key_usage == 0:
+            return 'AMD_CODE_SIGN'
+        if self.key_usage == 1:
+            return 'BIOS_CODE_SIGN'
+        if self.key_usage == 2:
+            return 'AMD_AND_BIOS_CODE_SIGN'
+        if self.key_usage == 8:
+            return 'PLATFORM_SECURE_BOOT'
+        return f'unknown_key_usage({self.key_usage})'
+
+    def get_readable_security_features(self):
+        features = []
+        if self.security_features & 0b001:
+            features.append('DISABLE_BIOS_KEY_ANTI_ROLLBACK')
+        if self.security_features & 0b010:
+            features.append('DISABLE_AMD_BIOS_KEY_USE')
+        if self.security_features & 0b100:
+            features.append('DISABLE_SECURE_DEBUG_UNLOCK')
+        return ', '.join(features)
 
 class HeaderEntry(Entry):
 
@@ -890,14 +941,14 @@ class HeaderEntry(Entry):
         return self._sha256_checksum_flag_2 == 1
 
     def verify_sha256(self, print_warning=True) -> bool:
-        if self._sha256_checksum.get_bytes() == sha256(self.get_decompressed_body()).digest():
+        if self._sha256_checksum.get_bytes() == sha256(self.get_decrypted_decompressed_body()).digest():
             return True
         if print_warning:
             self.psptool.ph.print_warning(f"Could not verify sha256 checksum for {self}")
         return False
 
     def update_sha256(self):
-        self._sha256_checksum[:] = sha256(self.get_decompressed_body()).digest()
+        self._sha256_checksum[:] = sha256(self.get_decrypted_decompressed_body()).digest()
         self.verify_sha256()
 
     def get_readable_version(self):
@@ -929,30 +980,31 @@ class HeaderEntry(Entry):
         return readable_magic
 
     def get_readable_signed_by(self):
-        return str(self.signature_fingerprint, encoding='ascii').upper()[:4]
+        return self.signed_entity.certifying_id.magic
 
     def get_signed_bytes(self) -> bytes:
-        if self.compressed:
-            full_decompressed = self.header.get_bytes() + self.get_decompressed_body()
-            # Truncate to actually signed portion
-            return full_decompressed[:self.header_len + self.size_signed]
-        elif self.encrypted:
-            return self.get_decrypted()[:self.size_signed + self.header_len]
-        else:
-            return self.get_bytes()[:self.size_signed + self.header_len]
+        entry_bytes = self.header.get_bytes() + self.get_decrypted_decompressed_body()
+        return entry_bytes[:self.header_len + self.size_signed]
 
-    def get_decompressed_body(self) -> bytes:
-        if not self.compressed:
-            return self.body.get_bytes()
+    def get_decrypted_decompressed_body(self) -> bytes:
+        if self.encrypted:
+            output = self.get_decrypted_body()
         else:
+            output = self.body.get_bytes()
+        if self.compressed:
             try:
-                return zlib_decompress(self.body.get_bytes()[:self.zlib_size])
+                return zlib_decompress(output[:self.zlib_size])
             except:
                 self.psptool.ph.print_warning(f"ZLIB decompression failed on entry {self.get_readable_type()}")
-                return self.body.get_bytes()
+        return output
 
-    def get_decrypted(self) -> bytes:
-        return self.header.get_bytes() + self.get_decrypted_body()
+    def to_decrypted_entry_bytes(self) -> bytes:
+        """Returns the bytes of the same entry, just with the encryption removed"""
+        header = bytearray(self.header.get_bytes())
+        header[0x18:0x1c] = bytes(4)
+        header[0x20:0x30] = bytes(0x10)
+        signature = self.signature.get_bytes() if self.signed else b''
+        return bytes(header) + self.get_decrypted_body() + signature
 
     def get_decrypted_body(self) -> bytes:
         if not self.encrypted:

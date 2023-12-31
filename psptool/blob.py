@@ -75,6 +75,9 @@ class Blob(NestedBuffer):
             if not fet_parsed:
                 self.psptool.ph.print_warning(f"Skipping FET at {hex(fet_location)} due to unknown ROM alignment")
 
+        if len(self.roms) == 0:
+            self.psptool.ph.print_warning("Could not find any Firmware Entry Table!")
+
         self._construct_range_dict()
 
     def __repr__(self):
@@ -148,7 +151,7 @@ class Blob(NestedBuffer):
                         size += 0x200
 
                 try:
-                    entry = PubkeyEntry(self, self, 0xdead, size, start, self, self.psptool)
+                    entry = PubkeyEntry(self, self, 0xdead, 0, size, start, self, self.psptool)
                     # todo: use from_fields factory instead of PubkeyEntry init
                     # entry = Entry.from_fields(self, self.parent_buffer,
                     #                           0xdead,

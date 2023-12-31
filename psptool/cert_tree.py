@@ -106,7 +106,8 @@ class SignedEntity:
                 print(f'        Need to rehash')
                 self.entry.update_sha256()
                 print(f'        Done')
-        assert self.signature.buffer_size == privkey.signature_size
+        assert self.signature.buffer_size == privkey.signature_size, \
+            f"{self.signature.buffer_size=}, {privkey.signature_size=}"
         signature = privkey.sign_blob(self.entry.get_signed_bytes())
         assert len(signature) == self.signature.buffer_size, f'Could not resign {self} with {privkey}: ' \
                                                              f'The new signature has the wrong length ' \
@@ -116,6 +117,8 @@ class SignedEntity:
     def resign_and_replace(self, privkeys: PrivateKeyDict = None, recursive: bool = False):
         # this resigns self (multiple times!)
         for pk in self.certifying_keys:
+            if pk in self.contained_keys:
+                continue # TODO hotfix
             pk.replace_and_resign(privkeys, recursive=recursive)
 
 
@@ -227,12 +230,12 @@ class PublicKeyEntity:
         privkey = privkeys[self.key_type.name]
         assert self.key_type.signature_size == privkey.signature_size
 
+        # replace self
+        self.replace_only(privkey.get_public_key())
+
         # resign children
         for se in self.certified_entities:
             se.resign_only(privkey)
-
-        # replace self
-        self.replace_only(privkey.get_public_key())
 
         # check crypto
         for se in self.certified_entities:
